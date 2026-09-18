@@ -1,0 +1,9 @@
+## Interface: 11503
+## Title: Fishing Forever
+## Notes: FishingForever is a lightweight, quality-of-life fishing addon for WoW Forever. It streamlines casting, managing lures, and alt-tabbing so you never miss a catch!
+## Author: Mr.Ajax
+## Version: 0.1.1
+## IconTexture: Interface\AddOns\FishingForever\FishingForever.tga
+## SavedVariables: FishingForeverDB
+
+FishingForever.lua
