@@ -31,7 +31,7 @@ local function GetFishingSpellName()
     return name or "Fishing"
 end
 
-local LURES = {6522, 46006, 62673, 69907, 6532, 7307, 6530, 6533, 6811, 6529, 67404}
+local LURES = {6532, 7307, 6530, 6533, 6811, 6529}
 
 local function GetItemCountWrapper(itemID)
     if C_Item and C_Item.GetItemCount then
