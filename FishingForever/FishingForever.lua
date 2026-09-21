@@ -3,6 +3,13 @@ local MAX_DOUBLE_CLICK = 0.4
 local lastClickTime = 0
 local ignoreLureUntil = 0
 
+local DB_DEFAULTS = {
+    enableDoubleClick = true,
+    enableLureMenu    = true,
+    enableSound       = true,
+    doubleClickDelay  = 0.4,
+}
+
 local function IsFishingPoleEquipped()
     local mainHand = GetInventoryItemID("player", 16)
     if mainHand then
@@ -185,6 +192,22 @@ local function SetCVarBG(val)
     end
 end
 
+local function GetCVarSound()
+    if C_CVar and C_CVar.GetCVar then
+        return C_CVar.GetCVar("Sound_EnableSFX")
+    else
+        return GetCVar("Sound_EnableSFX")
+    end
+end
+
+local function SetCVarSound(val)
+    if C_CVar and C_CVar.SetCVar then
+        C_CVar.SetCVar("Sound_EnableSFX", val)
+    else
+        SetCVar("Sound_EnableSFX", val)
+    end
+end
+
 local isFishing = false
 
 local mainFrame = CreateFrame("Frame")
@@ -193,6 +216,129 @@ mainFrame:RegisterEvent("PLAYER_LOGOUT")
 mainFrame:SetScript("OnEvent", function(self, event, ...)
     if event == "PLAYER_LOGIN" then
         FishingForeverDB = FishingForeverDB or {}
+        for k, v in pairs(DB_DEFAULTS) do
+            if FishingForeverDB[k] == nil then
+                FishingForeverDB[k] = v
+            end
+        end
+        MAX_DOUBLE_CLICK = FishingForeverDB.doubleClickDelay
+        
+        local panel = CreateFrame("Frame", "FishingForeverOptionsPanel", UIParent)
+        panel.name = "Fishing Forever"
+        
+        local title = panel:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
+        title:SetPoint("TOPLEFT", 16, -16)
+        title:SetText("Fishing Forever")
+        
+        local divider = panel:CreateTexture(nil, "ARTWORK")
+        divider:SetColorTexture(0.4, 0.4, 0.4, 0.6)
+        divider:SetSize(550, 1)
+        divider:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -10)
+        
+        local function SectionHeader(text, anchor, yOff)
+            local fs = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+            fs:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, yOff)
+            fs:SetTextColor(1, 0.82, 0)
+            fs:SetText(text)
+            return fs
+        end
+        
+        local function MakeCheckbox(label, desc, anchor, yOffset, dbKey)
+            local cb = CreateFrame("CheckButton", "FishingForeverCB_"..dbKey, panel, "InterfaceOptionsCheckButtonTemplate")
+            cb:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, yOffset)
+            cb.Text:SetText(label)
+            if desc then
+                cb:SetScript("OnEnter", function(self)
+                    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                    GameTooltip:SetText(label, 1, 1, 1)
+                    GameTooltip:AddLine(desc, nil, nil, nil, true)
+                    GameTooltip:Show()
+                end)
+                cb:SetScript("OnLeave", function() GameTooltip:Hide() end)
+            end
+            cb:SetChecked(FishingForeverDB[dbKey])
+            cb:SetScript("OnClick", function(self)
+                FishingForeverDB[dbKey] = self:GetChecked()
+                if dbKey == "enableDoubleClick" then
+                    MAX_DOUBLE_CLICK = FishingForeverDB.doubleClickDelay
+                end
+            end)
+            return cb
+        end
+        
+        local secCast = SectionHeader("Casting", divider, -14)
+        local cbDC = MakeCheckbox(
+            "Enable Double Right-Click to Fish",
+            "Double right-click anywhere while holding a fishing pole to instantly cast Fishing.",
+            secCast, -4, "enableDoubleClick")
+        
+        local sliderLabel = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+        sliderLabel:SetPoint("TOPLEFT", cbDC, "BOTTOMLEFT", 26, -10)
+        sliderLabel:SetText("Double-Click Window")
+        
+        local sliderDesc = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+        sliderDesc:SetPoint("TOPLEFT", sliderLabel, "BOTTOMLEFT", 0, -4)
+        sliderDesc:SetTextColor(0.7, 0.7, 0.7)
+        sliderDesc:SetText("How quickly you must double-click. Lower = faster.")
+        
+        local slider = CreateFrame("Slider", "FishingForeverDelaySlider", panel, "OptionsSliderTemplate")
+        slider:SetPoint("TOPLEFT", sliderDesc, "BOTTOMLEFT", 0, -18)
+        slider:SetMinMaxValues(0.1, 0.8)
+        slider:SetValueStep(0.05)
+        slider:SetWidth(220)
+        slider:SetValue(FishingForeverDB.doubleClickDelay)
+        slider.Low:SetText("0.1s")
+        slider.High:SetText("0.8s")
+        slider.Text:SetText(string.format("%.2fs", FishingForeverDB.doubleClickDelay))
+        slider:SetScript("OnValueChanged", function(self, val)
+            local rounded = math.floor(val * 20 + 0.5) / 20
+            FishingForeverDB.doubleClickDelay = rounded
+            MAX_DOUBLE_CLICK = rounded
+            self.Text:SetText(string.format("%.2fs", rounded))
+        end)
+        
+        local function UpdateSliderState(enabled)
+            if enabled then
+                slider:Enable()
+                sliderLabel:SetTextColor(1, 1, 1)
+                sliderDesc:SetTextColor(0.7, 0.7, 0.7)
+                slider.Low:SetTextColor(1, 1, 1)
+                slider.High:SetTextColor(1, 1, 1)
+            else
+                slider:Disable()
+                sliderLabel:SetTextColor(0.4, 0.4, 0.4)
+                sliderDesc:SetTextColor(0.4, 0.4, 0.4)
+                slider.Low:SetTextColor(0.4, 0.4, 0.4)
+                slider.High:SetTextColor(0.4, 0.4, 0.4)
+            end
+        end
+        
+        UpdateSliderState(FishingForeverDB.enableDoubleClick)
+        
+        local origClick = cbDC:GetScript("OnClick")
+        cbDC:SetScript("OnClick", function(self)
+            if origClick then origClick(self) end
+            UpdateSliderState(self:GetChecked())
+        end)
+        
+        local secLure = SectionHeader("Lure Menu", slider, -24)
+        MakeCheckbox(
+            "Enable Smart Lure Menu",
+            "After casting, if no lure is applied a quick-select menu appears near your cursor.",
+            secLure, -4, "enableLureMenu")
+        
+        local secSound = SectionHeader("Sound", secLure, -46)
+        MakeCheckbox(
+            "Enable Sound Automation",
+            "Turns on sound (and background sound) when you start fishing, then restores your original settings when done.",
+            secSound, -4, "enableSound")
+        
+        if InterfaceOptions_AddCategory then
+            InterfaceOptions_AddCategory(panel)
+        elseif Settings and Settings.RegisterCanvasLayoutCategory then
+            local category = Settings.RegisterCanvasLayoutCategory(panel, panel.name)
+            Settings.RegisterAddOnCategory(category)
+        end
         
         C_Timer.After(1, function()
             local currentCVar = GetCVarBG()
@@ -224,6 +370,7 @@ mainFrame:SetScript("OnEvent", function(self, event, ...)
             end
             
             if event == "GLOBAL_MOUSE_DOWN" and buttonName == "RightButton" then
+                if not FishingForeverDB.enableDoubleClick then return end
                 if InCombatLockdown() or not IsFishingPoleEquipped() or UnitExists("mouseover") or GetUnitSpeed("player") > 0 then
                     if not InCombatLockdown() then ClearOverrideBindings(btn) end
                     return
@@ -262,11 +409,22 @@ soundFrame:SetScript("OnEvent", function(self, event, unit)
             local channelName = UnitChannelInfo("player")
             if channelName == expectedName then
                 isFishing = true
-                if GetCVarBG() ~= "1" then
-                    SetCVarBG("1")
+                FishingForeverDB = FishingForeverDB or {}
+                
+                if FishingForeverDB.enableSound then
+                    local curSound = GetCVarSound()
+                    if curSound ~= "1" then
+                        FishingForeverDB.userSoundSetting = curSound
+                        SetCVarSound("1")
+                    end
+                    
+                    local curBG = GetCVarBG()
+                    if curBG ~= "1" then
+                        SetCVarBG("1")
+                    end
                 end
                 
-                if not InCombatLockdown() then
+                if FishingForeverDB.enableLureMenu and not InCombatLockdown() then
                     local hasLure = GetWeaponEnchantInfo()
                     local nowTime = GetTime()
                     if hasLure then
@@ -288,8 +446,14 @@ soundFrame:SetScript("OnEvent", function(self, event, unit)
         elseif event == "UNIT_SPELLCAST_CHANNEL_STOP" then
             if isFishing then
                 isFishing = false
-                if FishingForeverDB and FishingForeverDB.userBGSetting ~= nil then
-                    SetCVarBG(FishingForeverDB.userBGSetting)
+                if FishingForeverDB then
+                    if FishingForeverDB.userBGSetting ~= nil then
+                        SetCVarBG(FishingForeverDB.userBGSetting)
+                    end
+                    if FishingForeverDB.userSoundSetting ~= nil then
+                        SetCVarSound(FishingForeverDB.userSoundSetting)
+                        FishingForeverDB.userSoundSetting = nil
+                    end
                 end
             end
         end
