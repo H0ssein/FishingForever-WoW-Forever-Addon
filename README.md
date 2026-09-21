@@ -14,3 +14,4 @@
 - Equip a fishing pole.
 - **Double Right-Click** to start fishing.
 - If a lure is required, select one from the popup menu.
+- **Options Panel**: Configure the addon settings from the WoW AddOns Options panel.
