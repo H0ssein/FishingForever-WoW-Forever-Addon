@@ -15,3 +15,8 @@
 - **Double Right-Click** to start fishing.
 - If a lure is required, select one from the popup menu.
 - **Options Panel**: Configure the addon settings from the WoW AddOns Options panel.
+
+<img width="308" height="176" alt="image" src="https://github.com/user-attachments/assets/37ffe5ea-5c3d-4199-b131-36f2d837d0ed" />
+
+
+[![Crypto donation button by NOWPayments](https://nowpayments.io/images/embeds/donation-button-black.svg)](https://nowpayments.io/donation/mrajax)
