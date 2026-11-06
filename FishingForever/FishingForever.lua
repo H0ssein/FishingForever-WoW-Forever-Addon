@@ -5,9 +5,18 @@ local ignoreLureUntil = 0
 
 local DB_DEFAULTS = {
     enableDoubleClick = true,
+    enableEasyReel    = true,
+    reelInKey         = "BUTTON2",
     enableLureMenu    = true,
     enableSound       = true,
     doubleClickDelay  = 0.4,
+}
+
+local SOFT_TARGET_CVARS = {
+    ["SoftTargetInteract"] = "3",
+    ["SoftTargetInteractArc"] = "2",
+    ["SoftTargetInteractRange"] = "30",
+    ["SoftTargetInteractGameObject"] = "1",
 }
 
 local function IsFishingPoleEquipped()
@@ -208,7 +217,41 @@ local function SetCVarSound(val)
     end
 end
 
+local function SafeGetCVar(cvar)
+    if C_CVar and C_CVar.GetCVar then
+        return C_CVar.GetCVar(cvar)
+    elseif GetCVar then
+        return GetCVar(cvar)
+    end
+    return nil
+end
+
+local function SafeSetCVar(cvar, val)
+    if C_CVar and C_CVar.SetCVar then
+        C_CVar.SetCVar(cvar, tostring(val))
+    elseif SetCVar then
+        SetCVar(cvar, tostring(val))
+    end
+end
+
+local function GetKeyDisplayName(key)
+    if not key or key == "BUTTON2" or key == "RightButton" then
+        return "Right Click"
+    elseif key == "BUTTON1" or key == "LeftButton" then
+        return "Left Click"
+    elseif key == "BUTTON3" or key == "MiddleButton" then
+        return "Middle Click"
+    elseif key == "BUTTON4" then
+        return "Mouse 4"
+    elseif key == "BUTTON5" then
+        return "Mouse 5"
+    else
+        return key
+    end
+end
+
 local isFishing = false
+local castBtn = nil
 
 local mainFrame = CreateFrame("Frame")
 mainFrame:RegisterEvent("PLAYER_LOGIN")
@@ -223,6 +266,13 @@ mainFrame:SetScript("OnEvent", function(self, event, ...)
         end
         MAX_DOUBLE_CLICK = FishingForeverDB.doubleClickDelay
         
+        if FishingForeverDB.savedCVars then
+            for cvar, origVal in pairs(FishingForeverDB.savedCVars) do
+                SafeSetCVar(cvar, origVal)
+            end
+            FishingForeverDB.savedCVars = nil
+        end
+        
         local panel = CreateFrame("Frame", "FishingForeverOptionsPanel", UIParent)
         panel.name = "Fishing Forever"
         
@@ -230,23 +280,24 @@ mainFrame:SetScript("OnEvent", function(self, event, ...)
         title:SetPoint("TOPLEFT", 16, -16)
         title:SetText("Fishing Forever")
         
+        local ver = panel:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
+        ver:SetPoint("BOTTOMLEFT", title, "BOTTOMRIGHT", 6, 2)
+        
+        local version = (C_AddOns and C_AddOns.GetAddOnMetadata and C_AddOns.GetAddOnMetadata("FishingForever", "Version")) 
+             or (GetAddOnMetadata and GetAddOnMetadata("FishingForever", "Version")) 
+             or "Unknown"
+        ver:SetText(version)
+        
         local divider = panel:CreateTexture(nil, "ARTWORK")
         divider:SetColorTexture(0.4, 0.4, 0.4, 0.6)
         divider:SetSize(550, 1)
         divider:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -10)
         
-        local function SectionHeader(text, anchor, yOff)
-            local fs = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-            fs:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, yOff)
-            fs:SetTextColor(1, 0.82, 0)
-            fs:SetText(text)
-            return fs
-        end
-        
-        local function MakeCheckbox(label, desc, anchor, yOffset, dbKey)
+        local function MakeCheckbox(label, desc, yOffset, dbKey)
             local cb = CreateFrame("CheckButton", "FishingForeverCB_"..dbKey, panel, "InterfaceOptionsCheckButtonTemplate")
-            cb:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, yOffset)
+            cb:SetPoint("TOPLEFT", panel, "TOPLEFT", 16, yOffset)
             cb.Text:SetText(label)
+            cb.Text:SetTextColor(1, 1, 1)
             if desc then
                 cb:SetScript("OnEnter", function(self)
                     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
@@ -266,23 +317,23 @@ mainFrame:SetScript("OnEvent", function(self, event, ...)
             return cb
         end
         
-        local secCast = SectionHeader("Casting", divider, -14)
+        -- 1. Double Right-Click to Fish
         local cbDC = MakeCheckbox(
             "Enable Double Right-Click to Fish",
             "Double right-click anywhere while holding a fishing pole to instantly cast Fishing.",
-            secCast, -4, "enableDoubleClick")
+            -56, "enableDoubleClick")
         
         local sliderLabel = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-        sliderLabel:SetPoint("TOPLEFT", cbDC, "BOTTOMLEFT", 26, -10)
+        sliderLabel:SetPoint("TOPLEFT", panel, "TOPLEFT", 42, -88)
         sliderLabel:SetText("Double-Click Window")
         
         local sliderDesc = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-        sliderDesc:SetPoint("TOPLEFT", sliderLabel, "BOTTOMLEFT", 0, -4)
+        sliderDesc:SetPoint("TOPLEFT", panel, "TOPLEFT", 42, -104)
         sliderDesc:SetTextColor(0.7, 0.7, 0.7)
         sliderDesc:SetText("How quickly you must double-click. Lower = faster.")
         
         local slider = CreateFrame("Slider", "FishingForeverDelaySlider", panel, "OptionsSliderTemplate")
-        slider:SetPoint("TOPLEFT", sliderDesc, "BOTTOMLEFT", 0, -18)
+        slider:SetPoint("TOPLEFT", panel, "TOPLEFT", 42, -126)
         slider:SetMinMaxValues(0.1, 0.8)
         slider:SetValueStep(0.05)
         slider:SetWidth(220)
@@ -321,17 +372,107 @@ mainFrame:SetScript("OnEvent", function(self, event, ...)
             UpdateSliderState(self:GetChecked())
         end)
         
-        local secLure = SectionHeader("Lure Menu", slider, -24)
+        -- 2. Easy Reel-in
+        local cbReel = MakeCheckbox(
+            "Enable Easy Reel-in (No Bobber Aiming)",
+            "Reel in your catch using a hotkey without needing to aim or click directly on the bobber (uses Soft-Target interaction).",
+            -180, "enableEasyReel")
+            
+        local keyLabel = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+        keyLabel:SetPoint("TOPLEFT", panel, "TOPLEFT", 42, -214)
+        keyLabel:SetText("Reel-in Hotkey:")
+        
+        local keyBtn = CreateFrame("Button", "FishingForeverReelInKeyButton", panel, "UIPanelButtonTemplate")
+        keyBtn:SetSize(130, 22)
+        keyBtn:SetPoint("LEFT", keyLabel, "RIGHT", 10, 0)
+        keyBtn:SetText(GetKeyDisplayName(FishingForeverDB.reelInKey))
+        
+        local resetBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+        resetBtn:SetSize(65, 22)
+        resetBtn:SetPoint("LEFT", keyBtn, "RIGHT", 8, 0)
+        resetBtn:SetText("Reset")
+        
+        local keyDesc = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+        keyDesc:SetPoint("TOPLEFT", panel, "TOPLEFT", 42, -238)
+        keyDesc:SetTextColor(0.7, 0.7, 0.7)
+        keyDesc:SetText("Default is Right-Click. Click button to assign a custom key.")
+        
+        local isBindingKey = false
+        keyBtn:SetScript("OnClick", function(self)
+            if isBindingKey then return end
+            isBindingKey = true
+            self:SetText("<Press Any Key>")
+            self:EnableKeyboard(true)
+            
+            local function StopBinding(newKey)
+                isBindingKey = false
+                self:EnableKeyboard(false)
+                self:SetScript("OnKeyDown", nil)
+                self:SetScript("OnMouseDown", nil)
+                if newKey and newKey ~= "ESCAPE" then
+                    FishingForeverDB.reelInKey = newKey
+                end
+                self:SetText(GetKeyDisplayName(FishingForeverDB.reelInKey))
+            end
+            
+            self:SetScript("OnKeyDown", function(_, key)
+                if key == "ESCAPE" then
+                    StopBinding(nil)
+                else
+                    StopBinding(key:upper())
+                end
+            end)
+            
+            self:SetScript("OnMouseDown", function(_, button)
+                local mapped = "BUTTON2"
+                if button == "LeftButton" then mapped = "BUTTON1"
+                elseif button == "RightButton" then mapped = "BUTTON2"
+                elseif button == "MiddleButton" then mapped = "BUTTON3"
+                elseif button == "Button4" then mapped = "BUTTON4"
+                elseif button == "Button5" then mapped = "BUTTON5"
+                end
+                StopBinding(mapped)
+            end)
+        end)
+        
+        resetBtn:SetScript("OnClick", function()
+            FishingForeverDB.reelInKey = "BUTTON2"
+            keyBtn:SetText(GetKeyDisplayName("BUTTON2"))
+        end)
+        
+        local function UpdateEasyReelState(enabled)
+            if enabled then
+                keyBtn:Enable()
+                resetBtn:Enable()
+                keyLabel:SetTextColor(1, 1, 1)
+                keyDesc:SetTextColor(0.7, 0.7, 0.7)
+            else
+                keyBtn:Disable()
+                resetBtn:Disable()
+                keyLabel:SetTextColor(0.4, 0.4, 0.4)
+                keyDesc:SetTextColor(0.4, 0.4, 0.4)
+            end
+        end
+        
+        UpdateEasyReelState(FishingForeverDB.enableEasyReel)
+        
+        local origReelClick = cbReel:GetScript("OnClick")
+        cbReel:SetScript("OnClick", function(self)
+            if origReelClick then origReelClick(self) end
+            UpdateEasyReelState(self:GetChecked())
+        end)
+        
+        -- 3. Smart Lure Menu
         MakeCheckbox(
             "Enable Smart Lure Menu",
             "After casting, if no lure is applied a quick-select menu appears near your cursor.",
-            secLure, -4, "enableLureMenu")
+            -276, "enableLureMenu")
         
-        local secSound = SectionHeader("Sound", secLure, -46)
+        -- 4. Sound Automation
         MakeCheckbox(
             "Enable Sound Automation",
             "Turns on sound (and background sound) when you start fishing, then restores your original settings when done.",
-            secSound, -4, "enableSound")
+            -320, "enableSound")
         
         if InterfaceOptions_AddCategory then
             InterfaceOptions_AddCategory(panel)
@@ -354,10 +495,11 @@ mainFrame:SetScript("OnEvent", function(self, event, ...)
             end
         end)
         
-        local btn = CreateFrame("Button", "FishingForeverCastButton", UIParent, "SecureActionButtonTemplate")
-        btn:EnableMouse(true)
-        btn:RegisterForClicks("AnyUp", "AnyDown")
-        btn:Show()
+        castBtn = CreateFrame("Button", "FishingForeverCastButton", UIParent, "SecureActionButtonTemplate")
+        castBtn:EnableMouse(true)
+        castBtn:RegisterForClicks("AnyUp", "AnyDown")
+        castBtn:Show()
+        local btn = castBtn
         
         local clickFrame = CreateFrame("Frame")
         clickFrame:RegisterEvent("GLOBAL_MOUSE_DOWN")
@@ -366,6 +508,10 @@ mainFrame:SetScript("OnEvent", function(self, event, ...)
             if event == "PLAYER_REGEN_DISABLED" then
                 if not InCombatLockdown() then ClearOverrideBindings(btn) end
                 if lureMenu:IsShown() then lureMenu:Hide() end
+                return
+            end
+            
+            if isFishing then
                 return
             end
             
@@ -393,6 +539,13 @@ mainFrame:SetScript("OnEvent", function(self, event, ...)
     elseif event == "PLAYER_LOGOUT" then
         if not isFishing then
             FishingForeverDB.userBGSetting = GetCVarBG()
+        else
+            if FishingForeverDB.savedCVars then
+                for cvar, origVal in pairs(FishingForeverDB.savedCVars) do
+                    SafeSetCVar(cvar, origVal)
+                end
+                FishingForeverDB.savedCVars = nil
+            end
         end
     end
 end)
@@ -421,6 +574,22 @@ soundFrame:SetScript("OnEvent", function(self, event, unit)
                     local curBG = GetCVarBG()
                     if curBG ~= "1" then
                         SetCVarBG("1")
+                    end
+                end
+                
+                if FishingForeverDB.enableEasyReel then
+                    FishingForeverDB.savedCVars = FishingForeverDB.savedCVars or {}
+                    for cvar, targetVal in pairs(SOFT_TARGET_CVARS) do
+                        local cur = SafeGetCVar(cvar)
+                        if cur ~= nil and FishingForeverDB.savedCVars[cvar] == nil then
+                            FishingForeverDB.savedCVars[cvar] = cur
+                        end
+                        SafeSetCVar(cvar, targetVal)
+                    end
+                    
+                    if castBtn and not InCombatLockdown() then
+                        local key = FishingForeverDB.reelInKey or "BUTTON2"
+                        SetOverrideBinding(castBtn, true, key, "INTERACTTARGET")
                     end
                 end
                 
@@ -453,6 +622,18 @@ soundFrame:SetScript("OnEvent", function(self, event, unit)
                     if FishingForeverDB.userSoundSetting ~= nil then
                         SetCVarSound(FishingForeverDB.userSoundSetting)
                         FishingForeverDB.userSoundSetting = nil
+                    end
+                    
+                    if FishingForeverDB.enableEasyReel then
+                        if castBtn and not InCombatLockdown() then
+                            ClearOverrideBindings(castBtn)
+                        end
+                        if FishingForeverDB.savedCVars then
+                            for cvar, origVal in pairs(FishingForeverDB.savedCVars) do
+                                SafeSetCVar(cvar, origVal)
+                            end
+                            FishingForeverDB.savedCVars = nil
+                        end
                     end
                 end
             end
