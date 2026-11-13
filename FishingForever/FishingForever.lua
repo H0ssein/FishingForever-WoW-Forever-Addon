@@ -518,16 +518,29 @@ mainFrame:SetScript("OnEvent", function(self, event, ...)
         castBtn = CreateFrame("Button", "FishingForeverCastButton", UIParent, "SecureActionButtonTemplate")
         castBtn:EnableMouse(true)
         castBtn:RegisterForClicks("AnyUp", "AnyDown")
+        castBtn:SetScript("PostClick", function(self, button)
+            if IsMouselooking() then
+                MouselookStop()
+            end
+        end)
         castBtn:Show()
         local btn = castBtn
         
         local clickFrame = CreateFrame("Frame")
         clickFrame:RegisterEvent("GLOBAL_MOUSE_DOWN")
+        clickFrame:RegisterEvent("GLOBAL_MOUSE_UP")
         clickFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
         clickFrame:SetScript("OnEvent", function(self, event, buttonName)
             if event == "PLAYER_REGEN_DISABLED" then
                 if not InCombatLockdown() then ClearOverrideBindings(btn) end
                 if lureMenu:IsShown() then lureMenu:Hide() end
+                return
+            end
+            
+            if event == "GLOBAL_MOUSE_UP" and buttonName == "RightButton" then
+                if IsMouselooking() then
+                    MouselookStop()
+                end
                 return
             end
             
@@ -554,6 +567,9 @@ mainFrame:SetScript("OnEvent", function(self, event, ...)
                     lastClickTime = 0
                     local spellName = GetFishingSpellName()
                     SetOverrideBindingSpell(btn, true, "BUTTON2", spellName)
+                    if IsMouselooking() then
+                        MouselookStop()
+                    end
                 else
                     lastClickTime = now
                     if not InCombatLockdown() then ClearOverrideBindings(btn) end
@@ -589,6 +605,9 @@ soundFrame:SetScript("OnEvent", function(self, event, unit)
             local channelName = UnitChannelInfo("player")
             if channelName == expectedName then
                 isFishing = true
+                if IsMouselooking() then
+                    MouselookStop()
+                end
                 FishingForeverDB = FishingForeverDB or {}
                 
                 if FishingForeverDB.enableSound then
@@ -642,6 +661,9 @@ soundFrame:SetScript("OnEvent", function(self, event, unit)
         elseif event == "UNIT_SPELLCAST_CHANNEL_STOP" then
             if isFishing then
                 isFishing = false
+                if IsMouselooking() then
+                    MouselookStop()
+                end
                 if FishingForeverDB then
                     if FishingForeverDB.userBGSetting ~= nil then
                         SetCVarBG(FishingForeverDB.userBGSetting)
