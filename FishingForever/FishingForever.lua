@@ -176,6 +176,7 @@ local function UpdateLureMenu(availableLures)
         btn:SetAttribute("type", "macro")
         btn:SetAttribute("macrotext", "/use item:"..lure.id.."\n/use 16")
         btn:SetScript("PostClick", function()
+            ignoreLureUntil = GetTime() + 10
             lureMenu:Hide()
         end)
         btn.Count:SetText(lure.count > 1 and lure.count or "")
@@ -183,6 +184,25 @@ local function UpdateLureMenu(availableLures)
     end
     return true
 end
+
+lureMenu:RegisterEvent("BAG_UPDATE_DELAYED")
+lureMenu:RegisterEvent("UNIT_INVENTORY_CHANGED")
+lureMenu:SetScript("OnEvent", function(self, event, unit)
+    if event == "UNIT_INVENTORY_CHANGED" and unit ~= "player" then return end
+    if self:IsShown() and not InCombatLockdown() then
+        local hasLure = GetWeaponEnchantInfo()
+        if hasLure then
+            self:Hide()
+            return
+        end
+        local lures = GetAvailableLures()
+        if #lures == 0 then
+            self:Hide()
+        else
+            UpdateLureMenu(lures)
+        end
+    end
+end)
 
 
 local function GetCVarBG()
@@ -512,6 +532,13 @@ mainFrame:SetScript("OnEvent", function(self, event, ...)
             end
             
             if isFishing then
+                return
+            end
+            
+            local isCasting = (UnitCastingInfo and UnitCastingInfo("player")) or (C_Spell and C_Spell.GetSpellCastInfo and C_Spell.GetSpellCastInfo("player"))
+            local isChanneling = (UnitChannelInfo and UnitChannelInfo("player")) or (C_Spell and C_Spell.GetSpellChannelInfo and C_Spell.GetSpellChannelInfo("player"))
+            if isCasting or (isChanneling and isChanneling ~= GetFishingSpellName()) then
+                if not InCombatLockdown() then ClearOverrideBindings(btn) end
                 return
             end
             
