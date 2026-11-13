@@ -9,11 +9,13 @@
   - Click any lure in the menu to instantly apply it to your pole.
   - Don't want to use a lure right now? Click the "Ignore" (cross) button to hide the menu and fish without lures for the next 5 minutes.
 - **Background Sound Automation**: Automatically enables background sound while fishing (perfect for alt-tabbing), and restores your previous setting when you stop.
+**Easy Reel-in**(No Bobber Aiming): No more chasing tiny bobbers with your cursor! When a fish bites, simply click anywhere on your screen (or press your custom hotkey) to instantly reel it in.
 
 ## Usage
 - Equip a fishing pole.
 - **Double Right-Click** to start fishing.
 - If a lure is required, select one from the popup menu.
+- When you hear the splash, simply Right-Click anywhere to reel in your catch.
 - **Options Panel**: Configure the addon settings from the WoW AddOns Options panel.
 
 <img width="308" height="176" alt="image" src="https://github.com/user-attachments/assets/37ffe5ea-5c3d-4199-b131-36f2d837d0ed" />
